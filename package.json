@@ -1,0 +1,31 @@
+{
+  "name": "plex-mcp",
+  "version": "1.0.0",
+  "description": "Plex Media Server MCP Integration",
+  "main": "dist/plex-mcp-server-ts.js",
+  "scripts": {
+    "build": "tsc",
+    "start": "node dist/plex-mcp-server-ts.js",
+    "dev": "ts-node src/plex-mcp-server-ts.ts",
+    "lint": "eslint src/**/*.ts",
+    "test": "jest",
+    "test:watch": "jest --watch",
+    "test:coverage": "jest --coverage"
+  },
+  "dependencies": {
+    "@lukehagar/plexjs": "https://github.com/abrenoch/plexjs.git#getlibrary-fix",
+    "@modelcontextprotocol/sdk": "^1.7.0",
+    "axios": "^1.6.7",
+    "dotenv": "^16.4.5",
+    "express": "^4.18.2"
+  },
+  "devDependencies": {
+    "@types/express": "^4.17.21",
+    "@types/jest": "^29.5.12",
+    "@types/node": "^20.11.19",
+    "jest": "^29.7.0",
+    "ts-jest": "^29.1.2",
+    "ts-node": "^10.9.2",
+    "typescript": "^5.3.3"
+  }
+}
