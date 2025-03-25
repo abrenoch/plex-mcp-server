@@ -97,11 +97,13 @@ async function main(): Promise<void> {
     { 
       libraryId: z.string().describe("The ID of the library"),
       type: z.number().optional().describe("The type of content to retrieve (1=movie, 2=show, 3=season, 4=episode)"),
-      tag: z.enum(['newest', 'recentlyAdded', 'recentlyViewed', 'onDeck', 'unwatched', 'collection']).optional().describe("The tag to filter by")
+      tag: z.enum(['newest', 'recentlyAdded', 'recentlyViewed', 'onDeck', 'unwatched', 'collection']).optional().describe("The tag to filter by"),
+      start: z.number().optional().describe("Starting index for pagination (default: 0)"),
+      size: z.number().optional().describe("Number of items to return (default: 20)")
     },
-    async ({ libraryId, type = 1, tag = 'newest' }) => {
+    async ({ libraryId, type = 1, tag = 'newest', start = 0, size = 20 }) => {
       try {
-        logger.info(`Getting library contents for library ${libraryId} with type=${type}, tag=${tag}`);
+        logger.info(`Getting library contents for library ${libraryId} with type=${type}, tag=${tag}, start=${start}, size=${size}`);
         
         // Convert string tag to Tag enum
         const tagEnum = tag === 'newest' ? Tag.Newest :
@@ -111,10 +113,10 @@ async function main(): Promise<void> {
                        tag === 'unwatched' ? Tag.Unwatched :
                        tag === 'collection' ? Tag.Collection : Tag.Newest;
         
-        const media = await plexClient.getLibraryContents(libraryId, type, tagEnum);
+        const result = await plexClient.getLibraryContents(libraryId, type, tagEnum, start, size);
         
         // Transform the media items based on their type
-        const mediaItems = media.map((item: any) => {
+        const mediaItems = result.items.map((item: any) => {
           const baseInfo = {
             id: item.ratingKey,
             title: item.title,
@@ -144,7 +146,8 @@ async function main(): Promise<void> {
         const responseObject = {
           MediaContainer: {
             content: "library items", // Adding the required content field
-            Metadata: media.map((item: any) => {
+            totalSize: result.totalSize,
+            Metadata: result.items.map((item: any) => {
               // Ensure each Media item has optimizedForStreaming
               if (item.Media && Array.isArray(item.Media)) {
                 item.Media = item.Media.map((mediaItem: any) => ({
@@ -165,6 +168,7 @@ async function main(): Promise<void> {
             type: "text",
             text: JSON.stringify({ 
               media: mediaItems,
+              totalSize: result.totalSize,
               object: responseObject // Include the properly structured object for validation
             }, null, 2)
           }]
@@ -425,6 +429,49 @@ async function main(): Promise<void> {
           content: [{
             type: "text", 
             text: `Error getting watchlist: ${error instanceof Error ? error.message : 'Unknown error'}`
+          }],
+          isError: true
+        };
+      }
+    }
+  );
+
+  server.tool(
+    "get-devices",
+    {},
+    async () => {
+      try {
+        logger.info('Getting Plex devices...');
+        const devices = await plexClient.getDevices();
+        
+        return {
+          content: [{
+            type: "text",
+            text: JSON.stringify({
+              devices: devices.map((device: any) => ({
+                id: device.clientIdentifier,
+                name: device.name,
+                product: device.product,
+                productVersion: device.productVersion,
+                platform: device.platform,
+                platformVersion: device.platformVersion,
+                device: device.device,
+                model: device.model,
+                vendor: device.vendor,
+                provides: device.provides,
+                owned: device.owned,
+                lastSeenAt: device.lastSeenAt,
+                publicAddress: device.publicAddress
+              }))
+            }, null, 2)
+          }]
+        };
+      } catch (error) {
+        logger.error('Error getting devices:', error);
+        return {
+          content: [{
+            type: "text", 
+            text: `Error getting devices: ${error instanceof Error ? error.message : 'Unknown error'}`
           }],
           isError: true
         };

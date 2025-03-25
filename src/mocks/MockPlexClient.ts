@@ -1,3 +1,8 @@
+import { Logger } from '../Logger';
+
+// Create logger instance for the MockPlexClient
+const logger = new Logger("mock-plex-client");
+
 /**
  * Mock Plex client for testing when no Plex token is available
  */
@@ -11,8 +16,14 @@ export class MockPlexClient {
     return libraries;
   }
 
-  async getLibraryContents(libraryId: string, type: number = 1, tag: any = 'newest'): Promise<any[]> {
-    console.log(`Mock: Getting library contents for library ${libraryId} with type=${type}, tag=${tag}`);
+  async getLibraryContents(
+    libraryId: string, 
+    type: number = 1, 
+    tag: any = 'newest',
+    start: number = 0,
+    size: number = 20
+  ): Promise<{ items: any[], totalSize: number }> {
+    console.log(`Mock: Getting library contents for library ${libraryId} with type=${type}, tag=${tag}, start=${start}, size=${size}`);
     const contents = [
       { 
         ratingKey: '101', 
@@ -84,7 +95,14 @@ export class MockPlexClient {
         Media: [{ optimizedForStreaming: 1 }]
       }
     ];
-    return contents;
+
+    // Apply pagination
+    const paginatedContents = contents.slice(start, start + size);
+    
+    return {
+      items: paginatedContents,
+      totalSize: contents.length
+    };
   }
 
   async getMovies(): Promise<any[]> {
@@ -213,5 +231,46 @@ export class MockPlexClient {
     }
     
     return watchlist;
+  }
+
+  async getDevices(): Promise<any[]> {
+    console.log('Mock: Getting devices');
+    const devices = [
+      {
+        id: 1,
+        name: "Mock iPhone",
+        platform: "iOS",
+        clientIdentifier: "mock-iphone-1",
+        createdAt: 1654131230,
+        product: "Plex for iOS",
+        productVersion: "8.0",
+        platformVersion: "17.0",
+        device: "iPhone",
+        model: "iPhone 14",
+        vendor: "Apple",
+        provides: ["player", "controller"],
+        owned: true,
+        lastSeenAt: new Date().getTime(),
+        publicAddress: "192.168.1.100"
+      },
+      {
+        id: 2,
+        name: "Mock Android TV",
+        platform: "Android",
+        clientIdentifier: "mock-android-tv-1",
+        createdAt: 1654131240,
+        product: "Plex for Android TV",
+        productVersion: "9.0",
+        platformVersion: "12.0",
+        device: "Android TV",
+        model: "SHIELD Android TV",
+        vendor: "NVIDIA",
+        provides: ["player"],
+        owned: true,
+        lastSeenAt: new Date().getTime(),
+        publicAddress: "192.168.1.101"
+      }
+    ];
+    return devices;
   }
 } 

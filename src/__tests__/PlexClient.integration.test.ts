@@ -64,8 +64,8 @@ describe('PlexClient Integration', () => {
         expect(Array.isArray(contents)).toBe(true);
         
         // If the library has content, verify basic properties
-        if (contents.length > 0) {
-          contents.forEach(item => {
+        if (contents.items.length > 0) {
+          contents.items.forEach(item => {
             expect(item).toHaveProperty('ratingKey');
             expect(item).toHaveProperty('title');
           });
@@ -90,7 +90,7 @@ describe('PlexClient Integration', () => {
         const firstLibrary = libraries[0];
         const contents = await plexClient.getLibraryContents(firstLibrary.key);
         
-        if (contents.length === 0) {
+        if (contents.items.length === 0) {
           console.warn('No content found in library, searching for generic term');
           try {
             // Search for a generic term
@@ -106,7 +106,7 @@ describe('PlexClient Integration', () => {
         
         try {
           // Search for the first item's title
-          const searchTerm = contents[0].title;
+          const searchTerm = contents.items[0].title;
           console.log(`Searching for: ${searchTerm}`);
           const results = await plexClient.search(searchTerm);
           

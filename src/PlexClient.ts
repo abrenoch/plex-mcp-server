@@ -10,11 +10,12 @@ const logger = new Logger("plex-client");
  */
 export class PlexClient {
   private client: PlexAPI;
-
   private accessToken: string;
+  private serverUrl: string;
 
   constructor(options: { baseUrl?: string; token?: string } = {}) {
     this.accessToken = options.token || process.env.PLEX_TOKEN || '';
+    this.serverUrl = options.baseUrl || process.env.PLEX_URL || 'http://localhost:32400';
     
     if (!this.accessToken) {
       throw new Error('Plex token is required. Set it in the constructor options or as PLEX_TOKEN in your .env file.');
@@ -22,7 +23,7 @@ export class PlexClient {
     
     this.client = new PlexAPI({
       accessToken: this.accessToken,
-      serverURL: options.baseUrl || process.env.PLEX_URL || 'http://localhost:32400'
+      serverURL: this.serverUrl
     });
   }
 
@@ -41,26 +42,54 @@ export class PlexClient {
   }
 
   /**
-   * Get all media items from a library
+   * Get media items from a library with pagination support
    * @param libraryId - The ID of the library
    * @param type - The type of content to retrieve (default: 1)
    * @param tag - The tag to filter by (default: Tag.Newest)
+   * @param start - Starting index for pagination (default: 0)
+   * @param size - Number of items to return (default: 20)
    */
-  async getLibraryContents(libraryId: string, type: number = 1, tag: Tag = Tag.Newest): Promise<any[]> {
+  async getLibraryContents(
+    libraryId: string, 
+    type: number = 1, 
+    tag: Tag = Tag.Newest,
+    start: number = 0,
+    size: number = 20
+  ): Promise<{ items: any[], totalSize: number }> {
     try {
       // Converting libraryId to number as required by the PlexAPI
       const numericId = parseInt(libraryId, 10);
-      // Due to API changes, we need to provide the required parameters as per documentation
-      // Using any here to bypass type checking until we can determine the correct types
-      const params: GetLibraryItemsRequest = {
-        sectionKey: numericId,
-        type: type,
-        tag: tag
+      
+      // Construct the URL with query parameters
+      const url = `${this.serverUrl}/library/sections/${numericId}/all?type=${type}&X-Plex-Container-Start=${start}&X-Plex-Container-Size=${size}`;
+      
+      // Make the request using fetch
+      const response = await fetch(url, {
+        headers: {
+          'X-Plex-Token': this.accessToken,
+          'Accept': 'application/json'
+        }
+      });
+
+      if (!response.ok) {
+        throw new Error(`Failed to fetch library contents: ${response.statusText}`);
+      }
+
+      interface PlexResponse {
+        MediaContainer: {
+          Metadata: any[];
+          totalSize?: number;
+        };
+      }
+
+      const data = await response.json() as PlexResponse;
+      const items = data.MediaContainer?.Metadata || [];
+      const totalSize = data.MediaContainer?.totalSize || items.length;
+      
+      return {
+        items,
+        totalSize
       };
-      const response = await this.client.library.getLibraryItems(params);
-      const mediaContainer = response.object?.mediaContainer;
-      const items = mediaContainer?.metadata || [];
-      return items;
     } catch (error) {
       logger.error(`Error fetching content from library ${libraryId}:`, error);
       throw error;
@@ -86,7 +115,7 @@ export class PlexClient {
       const movieResults = await Promise.all(moviePromises);
       
       // Flatten the array of arrays and filter to only include movies
-      const allMovies = movieResults.flat().filter((item: any) => item.type === 'movie');
+      const allMovies = movieResults.flatMap(result => result.items).filter((item: any) => item.type === 'movie');
       return allMovies;
     } catch (error) {
       logger.error('Error fetching movies:', error);
@@ -168,6 +197,79 @@ export class PlexClient {
       return responseObj.metadata || [];
     } catch (error) {
       logger.error('Error fetching watchlist:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Get all devices connected to the Plex server
+   */
+  async getDevices(): Promise<any[]> {
+    try {
+      const response = await this.client.server.getDevices();
+      const devices = response.object?.mediaContainer?.device || [];
+      return devices;
+    } catch (error) {
+      logger.error('Error fetching devices:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Play a media item on a specific device
+   * @param mediaId - The rating key of the media item to play
+   * @param deviceId - The client identifier of the device to play on
+   */
+  async playMedia(mediaId: string, deviceId: string): Promise<void> {
+    try {
+      const numericId = parseInt(mediaId, 10);
+      
+      // First, get the device details to ensure it exists
+      const devices = await this.getDevices();
+      const targetDevice = devices.find((device: any) => device.clientIdentifier === deviceId);
+      
+      if (!targetDevice) {
+        throw new Error(`Device with ID ${deviceId} not found`);
+      }
+
+      // Get the media item details to ensure it exists using library sections endpoint
+      const response = await this.client.library.getLibraryItems({ 
+        sectionKey: numericId,
+        type: 1,  // Default to movie type
+        tag: Tag.Newest  // Required parameter
+      });
+      
+      if (!response.object?.mediaContainer?.metadata?.[0]) {
+        throw new Error(`Media item with ID ${mediaId} not found`);
+      }
+
+      // Construct and send the playback request
+      const playbackUrl = `${this.serverUrl}/player/playback/playMedia`;
+      const params = new URLSearchParams({
+        'X-Plex-Token': this.accessToken,
+        'machineIdentifier': deviceId,
+        'key': `/library/metadata/${mediaId}`,
+        'offset': '0',
+        'type': 'video',
+        'commandID': Date.now().toString()
+      });
+
+      const fullUrl = `${playbackUrl}?${params.toString()}`;
+      
+      const playResponse = await fetch(fullUrl, {
+        method: 'GET',
+        headers: {
+          'Accept': 'application/json'
+        }
+      });
+
+      if (!playResponse.ok) {
+        throw new Error(`Failed to start playback: ${playResponse.statusText}`);
+      }
+
+      logger.info(`Started playback of media ${mediaId} on device ${deviceId}`);
+    } catch (error) {
+      logger.error(`Error playing media ${mediaId} on device ${deviceId}:`, error);
       throw error;
     }
   }
